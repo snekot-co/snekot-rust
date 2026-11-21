@@ -1,0 +1,24 @@
+[package]
+name = "snekot-events"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Post product events, identify users and set insights with Snekot."
+license = "MIT"
+readme = "README.md"
+homepage = "https://snekot.co"
+documentation = "https://docs.rs/snekot-events"
+repository = "https://github.com/snekot-co/snekot-rust"
+keywords = ["snekot", "events", "analytics", "tracking", "notifications"]
+categories = ["api-bindings", "web-programming::http-client"]
+include = ["src/**", "tests/**", "examples/**", "README.md", "LICENSE", "Cargo.toml"]
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
