@@ -1,6 +1,6 @@
 [package]
 name = "snekot-events"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Post product events, identify users and set insights with Snekot."
 license = "MIT"
@@ -11,6 +11,13 @@ repository = "https://github.com/snekot-co/snekot-rust"
 keywords = ["snekot", "events", "analytics", "tracking", "notifications"]
 categories = ["api-bindings", "web-programming::http-client"]
 include = ["src/**", "tests/**", "examples/**", "README.md", "LICENSE", "Cargo.toml"]
+
+[features]
+# A client for programs that are not async: `snekot_events::blocking::Client`.
+blocking = ["tokio/rt"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }

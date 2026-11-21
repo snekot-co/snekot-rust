@@ -118,3 +118,29 @@ fn debug_output_leaves_the_key_out() {
     let shown = format!("{client:?}");
     assert!(shown.contains("\"p\"") && !shown.contains("sk_secret"), "{shown}");
 }
+
+#[test]
+fn an_experiment_puts_its_question_on_the_wire() {
+    use snekot_events::Experiment;
+    let client = Client::builder("sk_test", "p").build();
+    let request = client.experiment_request(&Experiment::new("pricing", ["control", "new"]).user_id("user-1"));
+    assert_eq!((request.method, request.path), ("POST", "/v1/experiment"));
+    assert_eq!(request.body, serde_json::json!({ "project": "p", "experiment": "pricing", "variants": ["control", "new"], "user_id": "user-1" }));
+}
+
+#[tokio::test]
+async fn a_disabled_experiment_is_its_first_variant() {
+    use snekot_events::Experiment;
+    let client = Client::builder("sk_test", "p").endpoint("http://127.0.0.1:1").disabled(true).build();
+    assert_eq!(client.experiment(Experiment::new("pricing", ["control", "new"])).await.unwrap(), "control");
+}
+
+#[cfg(feature = "blocking")]
+#[test]
+fn the_blocking_client_reports_an_unreachable_server() {
+    use snekot_events::{blocking, Error, Track};
+    let client = blocking::Client::new(Client::builder("sk_test", "p").endpoint("http://127.0.0.1:1"));
+    assert!(matches!(client.track(Track::new("x", "y")), Err(Error::Unreachable(_))));
+    let quiet = blocking::Client::new(Client::builder("sk_test", "p").disabled(true));
+    assert!(quiet.track(Track::new("x", "y")).is_ok());
+}

@@ -5,10 +5,10 @@ The [Snekot](https://snekot.co) SDK for Rust. Post product events, get them as p
 Async, on `reqwest` with rustls.
 
 ```bash
-cargo add snekot-events --git https://github.com/snekot-co/snekot-rust --tag 0.2.0
+cargo add snekot-events --git https://github.com/snekot-co/snekot-rust --tag 0.3.0
 ```
 
-That builds from this repository's `0.2.0` tag. The crate is not on crates.io yet. It needs a Tokio runtime.
+That builds from this repository's `0.3.0` tag. The crate is not on crates.io yet. It needs a Tokio runtime.
 
 ## Use
 
@@ -24,6 +24,14 @@ events.insight_increment("Orders", 1, None).await?;
 events.subscribe(Subscribe::new("jane@example.com").name("Jane Park")).await?;
 ```
 
+`experiment` asks which variant of an [A/B test](https://snekot.co/docs/experiments) a person gets:
+
+```rust
+use snekot_events::Experiment;
+
+let variant = events.experiment(Experiment::new("pricing-page", ["control", "annual-first"]).user_id("user-123")).await?;
+```
+
 Use a private key (`sk_…`) on a server. Keys are made in the app under Setup; see [Keys](https://snekot.co/docs/keys).
 
 ### Behaviour
@@ -35,10 +43,23 @@ Use a private key (`sk_…`) on a server. Keys are made in the app under Setup; 
 - `.disabled(true)` on the builder makes every call succeed without sending anything, for tests and local runs.
 - The endpoint defaults to `https://api.snekot.co`; `.endpoint(…)` on the builder changes it.
 
+## Without async
+
+Turn on the `blocking` feature (add `--features blocking` to the `cargo add` line) for a client whose calls wait for the answer:
+
+```rust
+use snekot_events::{blocking, Client, Track};
+
+let events = blocking::Client::new(Client::builder(token, "acme-store"));
+events.track(Track::new("payments", "New subscription").notify(true))?;
+```
+
+Do not call it from inside an async runtime; use the async client there.
+
 ## Develop
 
 ```bash
-cargo test
+cargo test --all-features
 ```
 
 `tests/conformance.json` is the wire contract every Snekot SDK is tested against. `cargo run --example smoke` runs every method against the real API; it needs `SNEKOT_TOKEN` and `SNEKOT_PROJECT`.

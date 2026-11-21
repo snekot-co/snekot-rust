@@ -197,6 +197,37 @@ impl Subscribe {
     }
 }
 
+/// A question about an A/B test: which variant does this person get?
+#[derive(Debug, Clone, Serialize)]
+pub struct Experiment {
+    experiment: String,
+    variants: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ip: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_agent: Option<String>,
+}
+
+impl Experiment {
+    /// Two to eight variants. The first is the one the others are measured against; keep the order the same everywhere.
+    pub fn new<V: Into<String>>(name: impl Into<String>, variants: impl IntoIterator<Item = V>) -> Self {
+        Self { experiment: name.into(), variants: variants.into_iter().map(Into::into).collect(), user_id: None, ip: None, user_agent: None }
+    }
+    /// The person, when they are known.
+    pub fn user_id(mut self, user_id: impl Into<String>) -> Self {
+        self.user_id = Some(user_id.into());
+        self
+    }
+    /// For someone with no id: their address and user agent, which tie them to their page views and are not stored.
+    pub fn visitor(mut self, ip: impl Into<String>, user_agent: impl Into<String>) -> Self {
+        self.ip = Some(ip.into());
+        self.user_agent = Some(user_agent.into());
+        self
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -305,6 +336,17 @@ impl Client {
         self.send(self.insight_increment_request(title, by.into(), icon)).await
     }
 
+    /// Which variant of an A/B test a person gets. The same person always gets the same one.
+    /// With the client disabled it is the first variant and nothing is sent.
+    pub async fn experiment(&self, experiment: Experiment) -> Result<String, Error> {
+        let first = experiment.variants.first().cloned().unwrap_or_default();
+        if self.disabled {
+            return Ok(first);
+        }
+        let answer = self.deliver(self.experiment_request(&experiment)).await?;
+        Ok(answer.get("variant").and_then(Json::as_str).map(str::to_owned).unwrap_or(first))
+    }
+
     // The requests are built apart from sending them, so the conformance tests can check the wire format without a server.
 
     pub fn track_request(&self, event: &Track) -> Request {
@@ -318,6 +360,9 @@ impl Client {
     }
     pub fn subscribe_request(&self, signup: &Subscribe) -> Request {
         self.request("POST", "/v1/subscribe", signup)
+    }
+    pub fn experiment_request(&self, experiment: &Experiment) -> Request {
+        self.request("POST", "/v1/experiment", experiment)
     }
     pub fn insight_track_request(&self, title: &str, value: Value, icon: Option<&str>) -> Request {
         self.request("POST", "/v1/insight", &with_icon(json!({ "title": title, "value": value }), icon))
@@ -339,6 +384,11 @@ impl Client {
         if self.disabled {
             return Ok(());
         }
+        self.deliver(request).await.map(|_| ())
+    }
+
+    /// Sends one request, with one retry, and gives back what the server answered with.
+    async fn deliver(&self, request: Request) -> Result<Json, Error> {
         let method = if request.method == "PATCH" { reqwest::Method::PATCH } else { reqwest::Method::POST };
         let url = format!("{}{}", self.endpoint, request.path);
         // One retry, and only where trying again can help: the network failed or the server did. A refusal is final.
@@ -346,7 +396,7 @@ impl Client {
         loop {
             let outcome = self.http.request(method.clone(), &url).bearer_auth(&self.token).json(&request.body).send().await;
             let failure = match outcome {
-                Ok(response) if response.status().is_success() => return Ok(()),
+                Ok(response) if response.status().is_success() => return Ok(response.json().await.unwrap_or(Json::Null)),
                 Ok(response) if response.status().is_server_error() => Error::Server { status: response.status().as_u16() },
                 Ok(response) => {
                     let status = response.status().as_u16();
@@ -370,4 +420,69 @@ fn with_icon(mut body: Json, icon: Option<&str>) -> Json {
         fields.insert("icon".to_owned(), Json::String(icon.to_owned()));
     }
     body
+}
+
+/// The same client for programs that are not async. Needs the `blocking` feature.
+///
+/// ```no_run
+/// use snekot_events::{blocking::Client, Track};
+///
+/// # fn run() -> Result<(), snekot_events::Error> {
+/// let events = Client::new(snekot_events::Client::builder("sk_...", "acme-store"));
+/// events.track(Track::new("payments", "New subscription").notify(true))?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Each call waits for the server's answer on the thread that made it. Do not call it from inside an async
+/// runtime, where it panics; use [`crate::Client`] there.
+#[cfg(feature = "blocking")]
+pub mod blocking {
+    use super::{ClientBuilder, Error, Experiment, Group, Properties, Subscribe, Track, Value};
+
+    /// Cheap to share behind an `Arc`; every call goes through one connection pool.
+    #[derive(Debug)]
+    pub struct Client {
+        inner: super::Client,
+        runtime: tokio::runtime::Runtime,
+    }
+
+    impl Client {
+        /// Builds from the same builder as the async client: `Client::new(snekot_events::Client::builder(token, project))`.
+        pub fn new(builder: ClientBuilder) -> Self {
+            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a current-thread runtime can be built");
+            Self { inner: builder.build(), runtime }
+        }
+        pub fn project(&self) -> &str {
+            self.inner.project()
+        }
+        /// Posts an event to a channel.
+        pub fn track(&self, event: Track) -> Result<(), Error> {
+            self.runtime.block_on(self.inner.track(event))
+        }
+        /// Sets properties on a user; keys sent again replace their old values.
+        pub fn identify(&self, user_id: &str, properties: Properties) -> Result<(), Error> {
+            self.runtime.block_on(self.inner.identify(user_id, properties))
+        }
+        /// Describes a group, and puts its `user_id` in it when one is set.
+        pub fn group(&self, group: Group) -> Result<(), Error> {
+            self.runtime.block_on(self.inner.group(group))
+        }
+        /// Puts an address on the project's newsletter list. Signing it up again changes nothing.
+        pub fn subscribe(&self, signup: Subscribe) -> Result<(), Error> {
+            self.runtime.block_on(self.inner.subscribe(signup))
+        }
+        /// Which variant of an A/B test a person gets.
+        pub fn experiment(&self, experiment: Experiment) -> Result<String, Error> {
+            self.runtime.block_on(self.inner.experiment(experiment))
+        }
+        /// Sets an insight to a value.
+        pub fn insight_track(&self, title: &str, value: impl Into<Value>, icon: Option<&str>) -> Result<(), Error> {
+            self.runtime.block_on(self.inner.insight_track(title, value, icon))
+        }
+        /// Adds to an insight's number, starting from 0 if it has none. Negative subtracts.
+        pub fn insight_increment(&self, title: &str, by: impl Into<Value>, icon: Option<&str>) -> Result<(), Error> {
+            self.runtime.block_on(self.inner.insight_increment(title, by, icon))
+        }
+    }
 }
