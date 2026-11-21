@@ -198,6 +198,7 @@ impl Subscribe {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     /// The server understood the request and said no. `message` is its own sentence for what to fix. Never retried.
     #[error("refused ({status}): {message}")]
@@ -218,6 +219,7 @@ pub struct Request {
     pub body: Json,
 }
 
+/// Made by [`Client::builder`].
 pub struct ClientBuilder {
     token: String,
     project: String,
@@ -255,6 +257,13 @@ pub struct Client {
     project: String,
     endpoint: String,
     disabled: bool,
+}
+
+/// Shows where the client sends and for which project, and never the key.
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client").field("project", &self.project).field("endpoint", &self.endpoint).field("disabled", &self.disabled).finish_non_exhaustive()
+    }
 }
 
 impl Client {

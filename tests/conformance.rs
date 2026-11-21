@@ -111,3 +111,10 @@ async fn unreachable_is_reported_after_one_retry() {
     assert!(matches!(error, snekot_events::Error::Unreachable(_)));
     assert!(started.elapsed() >= std::time::Duration::from_millis(250), "it waited before the second attempt");
 }
+
+#[test]
+fn debug_output_leaves_the_key_out() {
+    let client = Client::builder("sk_secret", "p").build();
+    let shown = format!("{client:?}");
+    assert!(shown.contains("\"p\"") && !shown.contains("sk_secret"), "{shown}");
+}

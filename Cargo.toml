@@ -1,8 +1,7 @@
 [package]
 name = "snekot-events"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-rust-version = "1.75"
 description = "Post product events, identify users and set insights with Snekot."
 license = "MIT"
 readme = "README.md"

@@ -5,10 +5,10 @@ The [Snekot](https://snekot.co) SDK for Rust. Post product events, get them as p
 Async, on `reqwest` with rustls.
 
 ```bash
-cargo add snekot-events --git https://github.com/snekot-co/snekot-rust --tag 0.1.0
+cargo add snekot-events --git https://github.com/snekot-co/snekot-rust --tag 0.2.0
 ```
 
-That builds from this repository's `0.1.0` tag. The crate is not on crates.io yet. It needs a Tokio runtime.
+That builds from this repository's `0.2.0` tag. The crate is not on crates.io yet. It needs a Tokio runtime.
 
 ## Use
 
