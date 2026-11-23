@@ -5,10 +5,10 @@ The [Snekot](https://snekot.co) SDK for Rust. Post product events, get them as p
 Async, on `reqwest` with rustls.
 
 ```bash
-cargo add snekot-events --git https://github.com/snekot-co/snekot-rust --tag 0.3.0
+cargo add snekot-events
 ```
 
-That builds from this repository's `0.3.0` tag. The crate is not on crates.io yet. It needs a Tokio runtime.
+It needs a Tokio runtime.
 
 ## Use
 
@@ -61,6 +61,8 @@ Do not call it from inside an async runtime; use the async client there.
 ```bash
 cargo test --all-features
 ```
+
+Publishing a release here publishes its version to crates.io; the release's tag must be the version in `Cargo.toml`.
 
 `tests/conformance.json` is the wire contract every Snekot SDK is tested against. `cargo run --example smoke` runs every method against the real API; it needs `SNEKOT_TOKEN` and `SNEKOT_PROJECT`.
 
