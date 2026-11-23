@@ -1,0 +1,33 @@
+# Publishes snekot-events to crates.io when a release is published here. crates.io trusts this workflow by name
+# (trusted publishing), so there is no token to store or rotate.
+name: publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: The release tag must be the version in Cargo.toml
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: test "$TAG" = "$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
+      - run: cargo test --all-features
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
