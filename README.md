@@ -21,7 +21,7 @@ events
     .track(Track::new("payments", "New subscription").icon("💰").notify(true).tag("plan", "pro"))
     .await?;
 events.insight_increment("Orders", 1, None).await?;
-events.subscribe(Subscribe::new("jane@example.com").name("Jane Park")).await?;
+events.subscribe(Subscribe::new("jane@example.com").name("Jane Park").language("sv-SE").timezone("Europe/Stockholm")).await?;
 ```
 
 `experiment` asks which variant of an [A/B test](https://snekot.co/docs/experiments) a person gets:

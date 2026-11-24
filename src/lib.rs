@@ -170,12 +170,16 @@ pub struct Subscribe {
     source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     notify: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timezone: Option<String>,
 }
 
 impl Subscribe {
     /// Capitals and spaces around the address do not matter.
     pub fn new(email: impl Into<String>) -> Self {
-        Self { email: email.into(), name: None, properties: Properties::new(), source: None, notify: None }
+        Self { email: email.into(), name: None, properties: Properties::new(), source: None, notify: None, language: None, timezone: None }
     }
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
@@ -193,6 +197,16 @@ impl Subscribe {
     /// Push the signup to the phones of everyone on the project.
     pub fn notify(mut self, notify: bool) -> Self {
         self.notify = Some(notify);
+        self
+    }
+    /// The person's language, as a tag such as `sv` or `sv-SE`.
+    pub fn language(mut self, language: impl Into<String>) -> Self {
+        self.language = Some(language.into());
+        self
+    }
+    /// The person's time zone, as its IANA name, such as `Europe/Stockholm`.
+    pub fn timezone(mut self, timezone: impl Into<String>) -> Self {
+        self.timezone = Some(timezone.into());
         self
     }
 }

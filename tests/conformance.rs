@@ -70,6 +70,12 @@ fn build(client: &Client, call: &str, args: &Json) -> Request {
             if let Some(notify) = args.get("notify").and_then(Json::as_bool) {
                 signup = signup.notify(notify);
             }
+            if let Some(language) = text(args, "language") {
+                signup = signup.language(language);
+            }
+            if let Some(timezone) = text(args, "timezone") {
+                signup = signup.timezone(timezone);
+            }
             for (key, entry) in properties(args.get("properties")) {
                 signup = signup.property(key, entry);
             }
