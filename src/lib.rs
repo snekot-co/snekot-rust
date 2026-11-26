@@ -242,6 +242,36 @@ impl Experiment {
     }
 }
 
+/// A question about a feature flag: is it on for this person?
+#[derive(Debug, Clone, Serialize)]
+pub struct Flag {
+    flag: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ip: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_agent: Option<String>,
+}
+
+impl Flag {
+    /// The flag's key. A key that has no flag is off.
+    pub fn new(key: impl Into<String>) -> Self {
+        Self { flag: key.into(), user_id: None, ip: None, user_agent: None }
+    }
+    /// The person, when they are known.
+    pub fn user_id(mut self, user_id: impl Into<String>) -> Self {
+        self.user_id = Some(user_id.into());
+        self
+    }
+    /// For someone with no id: their address and user agent, which tie them to their page views and are not stored.
+    pub fn visitor(mut self, ip: impl Into<String>, user_agent: impl Into<String>) -> Self {
+        self.ip = Some(ip.into());
+        self.user_agent = Some(user_agent.into());
+        self
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -361,6 +391,16 @@ impl Client {
         Ok(answer.get("variant").and_then(Json::as_str).map(str::to_owned).unwrap_or(first))
     }
 
+    /// Whether a feature flag is on for a person. The same person gets the same answer while the flag stays as it is.
+    /// With the client disabled it is off and nothing is sent.
+    pub async fn flag(&self, flag: Flag) -> Result<bool, Error> {
+        if self.disabled {
+            return Ok(false);
+        }
+        let answer = self.deliver(self.flag_request(&flag)).await?;
+        Ok(answer.get("on").and_then(Json::as_bool).unwrap_or(false))
+    }
+
     // The requests are built apart from sending them, so the conformance tests can check the wire format without a server.
 
     pub fn track_request(&self, event: &Track) -> Request {
@@ -377,6 +417,9 @@ impl Client {
     }
     pub fn experiment_request(&self, experiment: &Experiment) -> Request {
         self.request("POST", "/v1/experiment", experiment)
+    }
+    pub fn flag_request(&self, flag: &Flag) -> Request {
+        self.request("POST", "/v1/flag", flag)
     }
     pub fn insight_track_request(&self, title: &str, value: Value, icon: Option<&str>) -> Request {
         self.request("POST", "/v1/insight", &with_icon(json!({ "title": title, "value": value }), icon))
@@ -452,7 +495,7 @@ fn with_icon(mut body: Json, icon: Option<&str>) -> Json {
 /// runtime, where it panics; use [`crate::Client`] there.
 #[cfg(feature = "blocking")]
 pub mod blocking {
-    use super::{ClientBuilder, Error, Experiment, Group, Properties, Subscribe, Track, Value};
+    use super::{ClientBuilder, Error, Experiment, Flag, Group, Properties, Subscribe, Track, Value};
 
     /// Cheap to share behind an `Arc`; every call goes through one connection pool.
     #[derive(Debug)]
@@ -489,6 +532,10 @@ pub mod blocking {
         /// Which variant of an A/B test a person gets.
         pub fn experiment(&self, experiment: Experiment) -> Result<String, Error> {
             self.runtime.block_on(self.inner.experiment(experiment))
+        }
+        /// Whether a feature flag is on for a person.
+        pub fn flag(&self, flag: Flag) -> Result<bool, Error> {
+            self.runtime.block_on(self.inner.flag(flag))
         }
         /// Sets an insight to a value.
         pub fn insight_track(&self, title: &str, value: impl Into<Value>, icon: Option<&str>) -> Result<(), Error> {

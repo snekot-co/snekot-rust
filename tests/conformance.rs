@@ -141,6 +141,69 @@ async fn a_disabled_experiment_is_its_first_variant() {
     assert_eq!(client.experiment(Experiment::new("pricing", ["control", "new"])).await.unwrap(), "control");
 }
 
+#[test]
+fn a_flag_puts_its_question_on_the_wire() {
+    use snekot_events::Flag;
+    let client = Client::builder("sk_test", "p").build();
+    let request = client.flag_request(&Flag::new("new-checkout").user_id("user-1"));
+    assert_eq!((request.method, request.path), ("POST", "/v1/flag"));
+    assert_eq!(request.body, serde_json::json!({ "project": "p", "flag": "new-checkout", "user_id": "user-1" }));
+    let request = client.flag_request(&Flag::new("new-checkout").visitor("203.0.113.7", "Mozilla/5.0"));
+    assert_eq!(request.body, serde_json::json!({ "project": "p", "flag": "new-checkout", "ip": "203.0.113.7", "user_agent": "Mozilla/5.0" }));
+}
+
+/// A server on this machine that gives each connection the next answer, then stops.
+fn stub(answers: &'static [(u16, &'static str)]) -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for (status, body) in answers {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut read = Vec::new();
+            let mut chunk = [0u8; 4096];
+            // The request is small: read until its JSON body has closed.
+            while !read.ends_with(b"}") {
+                let count = stream.read(&mut chunk).unwrap();
+                if count == 0 {
+                    break;
+                }
+                read.extend_from_slice(&chunk[..count]);
+            }
+            let answer = format!("HTTP/1.1 {status} Answer\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            stream.write_all(answer.as_bytes()).unwrap();
+        }
+    });
+    endpoint
+}
+
+#[tokio::test]
+async fn a_flag_answers_with_the_servers_switch() {
+    use snekot_events::Flag;
+    let on = Client::builder("sk_test", "p").endpoint(stub(&[(200, r#"{"flag":"new-checkout","on":true}"#)])).build();
+    assert!(on.flag(Flag::new("new-checkout").user_id("user-1")).await.unwrap());
+    let off = Client::builder("sk_test", "p").endpoint(stub(&[(200, r#"{"flag":"new-checkout","on":false}"#)])).build();
+    assert!(!off.flag(Flag::new("new-checkout").user_id("user-1")).await.unwrap());
+}
+
+#[tokio::test]
+async fn a_flag_that_cannot_be_had_is_an_error() {
+    use snekot_events::{Error, Flag};
+    let refused = Client::builder("sk_test", "p").endpoint(stub(&[(403, r#"{"error":"this key is limited to channels"}"#)])).build();
+    assert!(matches!(refused.flag(Flag::new("new-checkout")).await, Err(Error::Refused { status: 403, .. })));
+    let failing = Client::builder("sk_test", "p").endpoint(stub(&[(503, "{}"), (503, "{}")])).build();
+    assert!(matches!(failing.flag(Flag::new("new-checkout")).await, Err(Error::Server { status: 503 })));
+    let nowhere = Client::builder("sk_test", "p").endpoint("http://127.0.0.1:1").build();
+    assert!(matches!(nowhere.flag(Flag::new("new-checkout")).await, Err(Error::Unreachable(_))));
+}
+
+#[tokio::test]
+async fn a_disabled_flag_is_off() {
+    use snekot_events::Flag;
+    let client = Client::builder("sk_test", "p").endpoint("http://127.0.0.1:1").disabled(true).build();
+    assert!(!client.flag(Flag::new("new-checkout").user_id("user-1")).await.unwrap());
+}
+
 #[cfg(feature = "blocking")]
 #[test]
 fn the_blocking_client_reports_an_unreachable_server() {

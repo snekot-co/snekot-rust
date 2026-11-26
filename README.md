@@ -32,6 +32,16 @@ use snekot_events::Experiment;
 let variant = events.experiment(Experiment::new("pricing-page", ["control", "annual-first"]).user_id("user-123")).await?;
 ```
 
+`flag` asks whether a feature flag is on for a person:
+
+```rust
+use snekot_events::Flag;
+
+let on = events.flag(Flag::new("new-checkout").user_id("user-123")).await?;
+```
+
+A key that has no flag is off. When the answer cannot be had, it is an `Error` like every other call.
+
 Use a private key (`sk_…`) on a server. Keys are made in the app under Setup; see [Keys](https://snekot.co/docs/keys).
 
 ### Behaviour
